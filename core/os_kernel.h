@@ -180,5 +180,143 @@ namespace OS
     // 全局内核实例声明
     extern TKernel Kernel;
 
+     class TKernelAgent;
+     class TService;
+
+
+    // TBaseProcess类 - 进程基类
+    // 功能：实现所有应用进程的公共基础功能
+    class TBaseProcess
+    {
+        // 友元声明，允许内核相关类和函数访问私有成员
+        friend class TKernel;    // 内核类
+        friend class TISRW;     // 中断服务例程包装器
+        friend class TISRW_SS;  // 单次服务中断包装器
+        friend class TKernelAgent; // 内核代理
+        friend void run();       // 系统运行函数
+
+    public:
+    #if SEPARATE_RETURN_STACK == 0
+        // 构造函数(不使用独立返回栈的版本)
+        // 参数：
+        // StackPoolEnd - 栈池结束地址(栈顶)
+        // pr - 进程优先级
+        // exec - 进程执行函数指针
+        // (调试模式下可选参数)
+        // aStackPool - 栈池起始地址(用于调试)
+        // name - 进程名称(用于调试)
+        TBaseProcess(stack_item_t* StackPoolEnd,
+                TPriority pr,
+                void (*exec)(),
+                #if vortexRT_DEBUG_ENABLE == 1
+                stack_item_t* aStackPool,
+                const char* name = nullptr
+                #endif
+                );
+
+    protected:
+        // 设置进程为非就绪状态(内部使用)
+        INLINE void set_unready() { Kernel.set_process_unready(this->Priority); }
+
+        // 初始化栈帧(内部使用)
+        // 参数：
+        // StackPoolEnd - 栈池结束地址
+        // exec - 进程执行函数指针
+        // (调试模式下可选参数)
+        // StackPool - 栈池起始地址
+        void init_stack_frame(stack_item_t* StackPoolEnd,
+                         void (*exec)(),
+                         #if vortexRT_DEBUG_ENABLE == 1
+                         stack_item_t* StackPool
+                         #endif
+                         );
+
+    #else  // SEPARATE_RETURN_STACK == 1
+        // 构造函数(使用独立返回栈的版本)
+        // 额外参数：
+        // RStack - 返回栈指针
+        // (调试模式下可选参数)
+        // aRStackPool - 返回栈池起始地址
+        TBaseProcess(stack_item_t* StackPoolEnd,
+                stack_item_t* RStack,
+                TPriority pr,
+                void (*exec)(),
+                #if vortexRT_DEBUG_ENABLE == 1
+                stack_item_t* aStackPool,
+                stack_item_t* aRStackPool,
+                const char* name = 0
+                #endif
+                );
+
+    protected:
+        // 初始化栈帧(独立返回栈版本)
+        void init_stack_frame(stack_item_t* Stack,
+                         stack_item_t* RStack,
+                         void (*exec)(),
+                         #if vortexRT_DEBUG_ENABLE == 1
+                         stack_item_t* StackPool,
+                         stack_item_t* RStackPool
+                         #endif
+                         );
+    #endif // SEPARATE_RETURN_STACK
+
+    public:
+        // 获取进程优先级
+        TPriority priority() const { return Priority; }
+
+        // 进程控制函数
+        static void sleep(timeout_t timeout = 0); // 进程休眠
+        void wake_up();          // 唤醒进程
+        void force_wake_up();    // 强制唤醒进程
+        INLINE void start() { force_wake_up(); } // 启动进程(调用force_wake_up)
+
+        // 进程状态查询
+        INLINE bool is_sleeping() const;    // 检查进程是否在休眠
+        INLINE bool is_suspended() const;   // 检查进程是否被挂起
+
+    #if vortexRT_DEBUG_ENABLE == 1
+        // 调试相关功能
+        INLINE TService* waiting_for() const { return WaitingFor; } // 获取进程等待的服务
+    public:
+        size_t stack_size() const { return StackSize; }  // 获取栈大小
+        size_t stack_slack() const;  // 获取栈剩余空间
+        const char* name() const { return Name; } // 获取进程名称
+        #if SEPARATE_RETURN_STACK == 1
+        size_t rstack_size() const { return RStackSize; } // 获取返回栈大小
+        size_t rstack_slack() const; // 获取返回栈剩余空间
+        #endif
+    #endif // vortexRT_DEBUG_ENABLE
+
+    #if vortexRT_PROCESS_RESTART_ENABLE == 1
+    protected:
+        void reset_controls(); // 重置进程控制状态(重启功能)
+    #endif
+    protected:
+        // 数据成员
+        stack_item_t* StackPointer;    // 当前栈指针
+        volatile timeout_t Timeout;    // 超时计数器(volatile用于多线程/中断环境)
+        const TPriority Priority;      // 进程优先级(常量)
+
+    #if vortexRT_DEBUG_ENABLE == 1
+        // 调试相关数据成员
+        TService* volatile WaitingFor; // 当前等待的服务(可能被中断修改)
+        const stack_item_t* const StackPool; // 栈池起始地址(常量指针)
+        const size_t StackSize;        // 栈大小(以stack_item_t为单位)
+        const char* Name;              // 进程名称
+        #if SEPARATE_RETURN_STACK == 1
+        const stack_item_t* const RStackPool; // 返回栈池起始地址
+        const size_t RStackSize;       // 返回栈大小
+        #endif
+    #endif // vortexRT_DEBUG_ENABLE
+
+    #if vortexRT_PROCESS_RESTART_ENABLE == 1
+        volatile TProcessMap* WaitingProcessMap; // 等待进程映射表(重启功能)
+    #endif
+
+    #if vortexRT_SUSPENDED_PROCESS_ENABLE != 0
+        static TProcessMap SuspendedProcessMap; // 挂起进程映射表(静态成员)
+    #endif
+
+    };
 }
 #endif // OS_KERNEL_H
