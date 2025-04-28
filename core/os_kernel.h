@@ -318,5 +318,264 @@ namespace OS
     #endif
 
     };
+
+    #if SEPARATE_RETURN_STACK == 0
+    // 进程模板类定义(单栈版本)
+    // 模板参数：
+    // pr       - 进程优先级(TPriority枚举类型)
+    // stk_size - 栈空间大小(字节数)
+    // pss      - 进程启动状态(默认pssRunning运行状态)
+        template<TPriority pr, size_t stk_size, TProcessStartState pss = pssRunning>
+        class process : public TBaseProcess
+        {
+        public:
+
+            // 构造函数声明(使用INLINE_PROCESS_CTOR宏定义内联)
+            // 参数：
+            // name_str - 进程名称字符串指针(调试模式下使用)
+            INLINE_PROCESS_CTOR process(const char* name_str = 0);
+
+            // 进程执行函数声明(必须由派生类实现)
+            // 使用OS_PROCESS宏定义特殊属性
+            OS_PROCESS static void exec();
+
+        #if vortexRT_PROCESS_RESTART_ENABLE == 1
+            // 进程终止函数(当启用进程重启功能时有效)
+            // 用于安全终止并重置进程状态
+            INLINE void terminate();
+        #endif
+
+        private:
+            // 进程栈空间数组
+            // 大小根据模板参数stk_size计算(stack_item_t单位)
+            stack_item_t Stack[stk_size/sizeof(stack_item_t)];
+        };
+
+        // 进程模板类构造函数实现
+        template<TPriority pr, size_t stk_size, TProcessStartState pss>
+        OS::process<pr, stk_size, pss>::process(const char*
+            #if vortexRT_DEBUG_ENABLE == 1// 调试模式下使用进程名称
+            name_str
+            #endif
+            ) : TBaseProcess(&Stack[stk_size / sizeof(stack_item_t)]// 栈顶地址
+                             , pr// 进程优先级
+                             , reinterpret_cast<void (*)()>(exec)// 执行函数指针转换
+                          #if vortexRT_DEBUG_ENABLE == 1// 调试模式下使用进程名称
+                             , Stack// 栈起始地址(调试)
+                             , name_str// 进程名称(调试)
+                          #endif
+                             )
+
+        {
+            #if vortexRT_SUSPENDED_PROCESS_ENABLE != 0
+            // 如果进程启动状态为挂起(pssSuspended)
+            if ( pss == pssSuspended )
+                // 从全局挂起进程映射表中清除当前优先级标记
+                clr_prio_tag(SuspendedProcessMap, get_prio_tag(pr));
+            #endif
+        }
+
+        #if vortexRT_PROCESS_RESTART_ENABLE == 1
+        // 进程终止函数实现
+        template<TPriority pr, size_t stk_size, TProcessStartState pss>
+        void OS::process<pr, stk_size, pss>::terminate()
+        {
+            TCritSect cs;// 临界区保护(防止中断干扰)
+            // 重置进程控制状态(清除等待状态等)
+            reset_controls();
+            // 重新初始化栈帧(保持原有执行函数)
+            init_stack_frame( &Stack[stk_size/sizeof(stack_item_t)]
+                             , reinterpret_cast<void (*)()>(exec)
+                          #if vortexRT_DEBUG_ENABLE == 1
+                              , Stack
+                          #endif
+                            );
+        }
+        #endif // vortexRT_RESTART_ENABLE
+    // 定义系统空闲进程类型别名
+    // 使用最低优先级(prIDLE)和预定义的栈大小
+        typedef OS::process<OS::prIDLE, vortexRT_IDLE_PROCESS_STACK_SIZE> TIdleProc;
+
+    #else  // SEPARATE_RETURN_STACK
+
+        // 进程模板类定义(双栈版本)
+        // 模板参数：
+        // pr       - 进程优先级(TPriority枚举类型)
+        // stk_size - 数据栈空间大小(字节数)
+        // rstk_size - 返回栈空间大小(字节数)
+        // pss      - 进程启动状态(默认pssRunning运行状态)
+        template<TPriority pr, size_t stk_size, size_t rstk_size, TProcessStartState pss = pssRunning>
+        class process : public TBaseProcess {
+        public:
+            // 构造函数声明(使用INLINE_PROCESS_CTOR宏定义内联)
+            // 参数：
+            // name_str - 进程名称字符串指针(调试模式下使用)
+            INLINE_PROCESS_CTOR process(const char* name_str = 0);
+
+            // 进程执行函数声明(必须由派生类实现)
+            // 使用OS_PROCESS宏定义特殊属性
+            OS_PROCESS static void exec();
+
+        #if vortexRT_PROCESS_RESTART_ENABLE == 1
+            // 进程终止函数(当启用进程重启功能时有效)
+            // 用于安全终止并重置进程状态
+            INLINE void terminate();
+        #endif
+
+        private:
+            // 进程数据栈空间数组
+            stack_item_t Stack[stk_size/sizeof(stack_item_t)];
+            // 进程返回栈空间数组
+            stack_item_t RStack[rstk_size/sizeof(stack_item_t)];
+        };
+
+        // 进程模板类构造函数实现
+        template<TPriority pr, size_t stk_size, size_t rstk_size, TProcessStartState pss>
+        process<pr, stk_size, rstk_size, pss>::process(const char*
+            #if vortexRT_DEBUG_ENABLE == 1  // 调试模式下使用进程名称
+            name_str
+            #endif
+            ): TBaseProcess(&Stack[stk_size / sizeof(stack_item_t)],  // 数据栈顶地址
+                           &RStack[rstk_size/sizeof(stack_item_t)],  // 返回栈顶地址
+                           pr,                                       // 进程优先级
+                           reinterpret_cast<void (*)()>(exec)         // 执行函数指针转换
+                        #if vortexRT_DEBUG_ENABLE == 1               // 调试模式参数
+                           , Stack                                   // 数据栈起始地址
+                           , RStack                                  // 返回栈起始地址
+                           , name_str                                // 进程名称
+                        #endif
+                           )
+        {
+            #if vortexRT_SUSPENDED_PROCESS_ENABLE != 0
+            // 如果进程启动状态为挂起(pssSuspended)
+            if (pss == pssSuspended) {
+                // 从全局挂起进程映射表中清除当前优先级标记
+                clr_prio_tag(SuspendedProcessMap, get_prio_tag(pr));
+            }
+            #endif
+        }
+
+        #if vortexRT_PROCESS_RESTART_ENABLE == 1
+        // 进程终止函数实现
+        template<TPriority pr, size_t stk_size, size_t rstk_size, TProcessStartState pss>
+        void OS::process<pr, stk_size, rstk_size, pss>::terminate()
+        {
+            TCritSect cs;  // 临界区保护(防止中断干扰)
+
+            // 重置进程控制状态(清除等待状态等)
+            reset_controls();
+            // 重新初始化双栈帧(保持原有执行函数)
+            init_stack_frame(&Stack[stk_size/sizeof(stack_item_t)],
+                            &RStack[rstk_size/sizeof(stack_item_t)],
+                            reinterpret_cast<void (*)()>(exec)
+                        #if vortexRT_DEBUG_ENABLE == 1
+                            , Stack    // 调试模式下传递数据栈起始地址
+                            , RStack   // 调试模式下传递返回栈起始地址
+                        #endif
+                            );
+        }
+        #endif
+
+        // 定义系统空闲进程类型别名(双栈版本)
+        // 使用最低优先级(prIDLE)和预定义的双栈大小
+        typedef OS::process<OS::prIDLE,
+                           vortexRT_IDLE_PROCESS_DATA_STACK_SIZE,
+                           vortexRT_IDLE_PROCESS_RETURN_STACK_SIZE> TIdleProc;
+
+    #endif    // SEPARATE_RETURN_STACK
+    //--------------------------------------------------------------------------
+
+
+    extern TIdleProc IdleProc;
+
+
+   class TKernelAgent
+    {
+        // 获取当前运行进程对象指针
+        // 通过查询内核的进程表(ProcessTable)获取
+        INLINE static TBaseProcess * cur_proc() { return Kernel.ProcessTable[cur_proc_priority()]; }
+
+    protected:
+        // 构造函数设为protected，限制只有派生类可以实例化
+        TKernelAgent() { }
+
+        // 获取当前运行进程的优先级(只读引用)
+        INLINE static uint_fast8_t const & cur_proc_priority() { return Kernel.CurProcPriority; }
+
+        // 获取就绪进程位图(volatile引用，可能被中断修改)
+        INLINE static volatile TProcessMap & ready_process_map() { return Kernel.ReadyProcessMap; }
+
+        // 获取当前进程的超时计数器(volatile引用)
+        INLINE static volatile timeout_t & cur_proc_timeout() { return cur_proc()->Timeout; }
+
+        // 触发内核重新调度
+        INLINE static void reschedule() { Kernel.scheduler(); }
+
+        // 设置指定优先级进程为就绪状态
+        INLINE static void set_process_ready(const uint_fast8_t pr) { Kernel.set_process_ready(pr); }
+
+        // 设置指定优先级进程为非就绪状态
+        INLINE static void set_process_unready(const uint_fast8_t pr) { Kernel.set_process_unready(pr); }
+
+    #if vortexRT_DEBUG_ENABLE == 1
+        // 调试模式下获取当前进程等待的服务对象
+        INLINE static TService * volatile & cur_proc_waiting_for() { return cur_proc()->WaitingFor; }
+    #endif
+
+    #if vortexRT_PROCESS_RESTART_ENABLE == 1
+        // 进程重启功能启用时，获取当前进程的等待映射表
+        INLINE static volatile TProcessMap * & cur_proc_waiting_map() { return cur_proc()->WaitingProcessMap; }
+    #endif
+    };
+
+     // 系统运行函数（永不返回）
+    INLINE NORETURN void run();
+
+    // 检查操作系统是否正在运行
+    INLINE bool os_running();
+
+    // 锁定系统定时器（临界区保护）
+    INLINE void lock_system_timer()    { TCritSect cs; LOCK_SYSTEM_TIMER();   }
+
+    // 解锁系统定时器（临界区保护）
+    INLINE void unlock_system_timer()  { TCritSect cs; UNLOCK_SYSTEM_TIMER(); }
+
+    // 进程休眠函数（默认参数0表示无限期休眠）
+    INLINE void sleep(timeout_t t = 0) { TBaseProcess::sleep(t); }
+
+    // 根据优先级获取进程控制块指针
+    INLINE const TBaseProcess * get_proc(uint_fast8_t Prio) { return Kernel.ProcessTable[Prio]; }
+
+    //--------------------------------------------------------------------------
+
+#if vortexRT_SYSTEM_TICKS_ENABLE == 1
+#if vortexRT_SYSTEM_TICKS_ATOMIC == 1
+    // 原子方式获取系统滴答计数（无锁版本）
+    INLINE tick_count_t get_tick_count() { return Kernel.SysTickCount; }
+#else
+    // 获取系统滴答计数（带临界区保护）
+    INLINE tick_count_t get_tick_count() { TCritSect cs; return Kernel.SysTickCount; }
+#endif
+#endif // vortexRT_SYSTEM_TICKS_ENABLE
+
+#if vortexRT_TARGET_IDLE_HOOK_ENABLE == 1
+    // 目标平台特定的空闲进程钩子函数
+    void idle_process_target_hook();
+#endif // vortexRT_TARGET_IDLE_HOOK_ENABLE
+
+#if vortexRT_SYSTIMER_HOOK_ENABLE == 1
+    // 系统定时器钩子函数（必须启用才能使用时间片轮转）
+    INLINE_SYS_TIMER_HOOK void system_timer_user_hook();
+#endif // vortexRT_SYSTIMER_HOOK_ENABLE
+
+#if vortexRT_CONTEXT_SWITCH_USER_HOOK_ENABLE == 1
+    // 上下文切换用户钩子函数（用于自定义上下文切换逻辑）
+    INLINE_CONTEXT_SWITCH_HOOK void context_switch_user_hook();
+#endif // vortexRT_CONTEXT_SWITCH_USER_HOOK_ENABLE
+
+#if vortexRT_IDLE_HOOK_ENABLE == 1
+    // 空闲进程用户钩子函数（用于自定义空闲任务处理）
+    void idle_process_user_hook();
+#endif // vortexRT_IDLE_HOOK_ENABLE
 }
 #endif // OS_KERNEL_H
