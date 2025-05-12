@@ -1,12 +1,17 @@
+
+
 #ifndef vortexRT_DEFS_H
 #define vortexRT_DEFS_H
 
+//------------------------------------------------------------------------------
 
+//------------------------------------------------------------------------------
+//
 //    Check CONFIG Macro Definitions
-
+//
+//
 #include "vortexRT_CONFIG.h"
 #include "os_target.h"
-
 //----------------- vortexRT_USER_DEFINED_CRITSECT_ENABLE -------------
 #ifndef vortexRT_USER_DEFINED_CRITSECT_ENABLE
 #define vortexRT_USER_DEFINED_CRITSECT_ENABLE  0
@@ -140,8 +145,11 @@
 #define NORETURN
 #endif
 
-
-//   Priority and process map type definitions
+//------------------------------------------------------------------------------
+//
+///    Priority and process map type definitions
+//
+//
 namespace OS
 {
     constexpr uint_fast8_t MAX_PROCESS_COUNT = 32;
@@ -356,15 +364,18 @@ namespace OS
     };
 #endif //vortexRT_PRIORITY_ORDER
 }
-
+//-----------------------------------------------------------------------------
+//
 //     Process's constructor inlining control: default behaviour
-
+//
 #ifndef INLINE_PROCESS_CTOR
 #define INLINE_PROCESS_CTOR
 #endif
 
-
+//-----------------------------------------------------------------------------
+//
 //   Initial process state.
+//
 namespace OS
 {
     enum TProcessStartState
