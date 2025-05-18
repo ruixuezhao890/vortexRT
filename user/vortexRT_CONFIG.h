@@ -16,8 +16,8 @@ typedef uint_fast32_t tick_count_t;
 //
 //    Specify vortexRT Process Count. Must be less than 31
 //
-//
-#define  vortexRT_PROCESS_COUNT                  31
+//    不算空闲进程
+#define  vortexRT_PROCESS_COUNT                  3
 
 //-----------------------------------------------------------------------------
 //

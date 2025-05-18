@@ -5,7 +5,8 @@
 
 #include <cstddef>
 #include <cstdint>
-//todo #include <usrlib.h>
+#include <cassert>
+#include <usrlib.h>
 
 //------------------------------------------------------------------------------
 
@@ -29,25 +30,7 @@ extern "C" NORETURN void os_start(stack_item_t* sp);
     // 返回: 下一个要切换进程的栈指针
     extern "C" stack_item_t* os_context_switch_hook(stack_item_t* sp);
 #endif
-    
 
-    
-//==============================================================================
-
-//------------------------------------------------------------------------------
-//
-//
-//     NAME       :   OS
-//
-//     PURPOSE    :   Namespace for all OS stuff
-//
-//     DESCRIPTION:   Includes:  Kernel,
-//                               Processes,
-//                               Mutexes,
-//                               Event Flags,
-//                               Arbitrary-type Channels,
-//                               Messages
-//
 namespace OS
 {
     
@@ -609,7 +592,7 @@ namespace OS
 }   // namespace OS
 //------------------------------------------------------------------------------
 
-//todo #include <os_services.h>
+#include <os_services.h>
 #include "vortexRT_extensions.h"
 
 
@@ -708,10 +691,12 @@ stack_item_t* OS::TKernel::context_switch_hook(stack_item_t* sp)
 
     // 保存当前进程的栈指针
     ProcessTable[CurProcPriority]->StackPointer = sp;
-    
+
+    VX_ASSERT(ProcessTable[SchedProcPriority]!=nullptr
+        ,"Modifying vortexRT_PROCESS_COUNT to match your actual process count may resolve this issue.");  // 检查ProcessTable非空
     // 加载目标进程的栈指针
     sp = ProcessTable[SchedProcPriority]->StackPointer;
-    
+
 #if vortexRT_CONTEXT_SWITCH_USER_HOOK_ENABLE == 1
     // 如果启用了用户钩子，调用用户定义的上下文切换前处理函数
     context_switch_user_hook();
@@ -772,6 +757,6 @@ INLINE bool OS::os_running()
 }
 //-----------------------------------------------------------------------------
 
-//todo #include <os_services.h>
+#include <os_services.h>
 
 #endif // OS_KERNEL_H

@@ -1,6 +1,3 @@
-
-
-
 #include <vortexRT.h>
 
 namespace OS

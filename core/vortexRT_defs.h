@@ -5,13 +5,8 @@
 
 //------------------------------------------------------------------------------
 
-//------------------------------------------------------------------------------
-//
-//    Check CONFIG Macro Definitions
-//
-//
-#include "vortexRT_CONFIG.h"
-#include "os_target.h"
+
+
 //----------------- vortexRT_USER_DEFINED_CRITSECT_ENABLE -------------
 #ifndef vortexRT_USER_DEFINED_CRITSECT_ENABLE
 #define vortexRT_USER_DEFINED_CRITSECT_ENABLE  0
